@@ -204,7 +204,7 @@ server <- function(input, output, session) {
         match_quality = case_when(
           grade_difference >= 2 ~ "Strong Match",
           grade_difference >= 1 ~ "Good Match", 
-          grade_difference >= 0 ~ "Okay Match""
+          grade_difference >= 0 ~ "Okay Match"
         )
       ) %>%
       select(
