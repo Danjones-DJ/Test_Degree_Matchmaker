@@ -6,7 +6,7 @@ library(plotly)
 
 # Define UI
 ui <- dashboardPage(
-  dashboardHeader(title = "🎯 Degree Matcher"),
+  dashboardHeader(title = "Degree Matcher (UCL Edition)"),
   
   dashboardSidebar(
     sidebarMenu(
@@ -38,7 +38,7 @@ ui <- dashboardPage(
                   solidHeader = TRUE,
                   width = 4,
                   
-                  h4("📚 Select Your Subjects of Interest"),
+                  h4("What subjects are you interested in?"),
                   checkboxGroupInput("subjects", 
                                      label = NULL,
                                      choices = list(
@@ -63,7 +63,7 @@ ui <- dashboardPage(
                   
                   hr(),
                   
-                  h4("📊 Your A-Level Grades"),
+                  h4("Your A-Level Grades"),
                   p("Enter your achieved or predicted grades:"),
                   
                   fluidRow(
@@ -107,7 +107,7 @@ ui <- dashboardPage(
                     condition = "input.findDegrees == 0",
                     div(
                       style = "text-align: center; padding: 50px;",
-                      h3("👋 Welcome to Degree Matcher!"),
+                      h3("Welcome to Degree Matcher!"),
                       p("Select your subjects of interest and enter your A-Level grades to find degrees you can get into."),
                       icon("arrow-left", class = "fa-2x")
                     )
@@ -116,10 +116,10 @@ ui <- dashboardPage(
                   conditionalPanel(
                     condition = "input.findDegrees > 0",
                     div(
-                      h4("📈 Your Academic Profile"),
+                      h4("Your Academic Profile"),
                       verbatimTextOutput("profileSummary"),
                       br(),
-                      h4("🎯 Matching Degrees"),
+                      h4("Matching Degrees"),
                       DT::dataTableOutput("resultsTable")
                     )
                   )
@@ -202,9 +202,9 @@ server <- function(input, output, session) {
       arrange(desc(grade_difference), title) %>%
       mutate(
         match_quality = case_when(
-          grade_difference >= 2 ~ "🟢 Strong Match",
-          grade_difference >= 1 ~ "🟡 Good Match", 
-          grade_difference >= 0 ~ "🔴 Just Meets Requirements"
+          grade_difference >= 2 ~ "Strong Match",
+          grade_difference >= 1 ~ "Good Match", 
+          grade_difference >= 0 ~ "Okay Match""
         )
       ) %>%
       select(
@@ -293,13 +293,13 @@ server <- function(input, output, session) {
           list(width = "150px", targets = 4:5)
         )
       ),
-      caption = "🎯 Degrees you can get into - sorted by how well you exceed requirements"
+      caption = "Degrees you can get into - sorted by how well you exceed requirements!"
     ) %>%
       DT::formatStyle(
         "Match Quality",
         backgroundColor = DT::styleEqual(
-          c("🟢 Strong Match", "🟡 Good Match", "🔴 Just Meets Requirements"),
-          c("#d4edda", "#fff3cd", "#f8d7da")
+          c("Strong Match", "Good Match", "Okay Match"),
+          c("#277a04", "#7bc75b", "#afcca3")
         )
       )
   })
