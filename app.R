@@ -120,7 +120,10 @@ ui <- dashboardPage(
                       verbatimTextOutput("profileSummary"),
                       br(),
                       h4("Matching Degrees"),
-                      DT::dataTableOutput("resultsTable")
+                      DT::dataTableOutput("resultsTable"),
+                      br(),
+                      h4("Salary Information"),
+                      plotlyOutput("salaryPlot")
                     )
                   )
                 )
@@ -133,29 +136,18 @@ ui <- dashboardPage(
 # Define server logic
 server <- function(input, output, session) {
   
-  # Helper functions (same as your original code)
-  options(readr.show_col_types = FALSE)
+  # Load the UCL dataset
+  ucl_data <- reactive({
+    url <- "https://raw.githubusercontent.com/Danjones-DJ/Degree-Matchmaker_DJ/refs/heads/main/ucl_pcm_degree_v3"
+    read_csv(url) %>%
+      select(
+        title, degree_type, a_level, a_level_subjects, gcse, ib, 
+        url, foundation, sandwich, yearabroad,
+        lower_quartile_salary, median_salary, upper_quartile_salary
+      )
+  })
   
-  degree_tree <- function(subject) {
-    library(tidyverse)
-    
-    str <- as.character(subject)
-    
-    pure_set <- read_csv("https://raw.githubusercontent.com/Danjones-DJ/degree-matchmaker/refs/heads/main/pure_grades.csv")
-    combined_set <- read_csv("https://raw.githubusercontent.com/Danjones-DJ/degree-matchmaker/refs/heads/main/combined_grades.csv")
-    minor_set <- read_csv("https://raw.githubusercontent.com/Danjones-DJ/degree-matchmaker/refs/heads/main/minor_grades.csv")
-    integrated_set <- read_csv("https://raw.githubusercontent.com/Danjones-DJ/degree-matchmaker/refs/heads/main/integrated_grades.csv")
-    
-    all_sets <- bind_rows(pure_set, combined_set, minor_set, integrated_set)
-    
-    all_sets <- all_sets %>%
-      select(any_of(c("title", "degree_type", "A_level", "GCSE", "A_level_subjects", "URL"))) %>%
-      filter(str_detect(title, regex(str, ignore_case = TRUE))) %>%
-      arrange(title)
-    
-    return(all_sets)
-  }
-  
+  # Helper functions
   grade_to_score <- function(grade) {
     case_when(
       grade == "A*" ~ 4,
@@ -168,7 +160,8 @@ server <- function(input, output, session) {
   }
   
   calculate_requirement_score <- function(a_level_req) {
-    grades <- str_extract_all(a_level_req, "A\\*|[A-E]")[[1]]
+    if (is.na(a_level_req)) return(0)
+    grades <- str_extract_all(a_level_req, "A\\*|A|B|C|D|E")[[1]]
     sum(sapply(grades, grade_to_score))
   }
   
@@ -179,40 +172,37 @@ server <- function(input, output, session) {
   find_matching_degrees <- function(student_grades, subjects_of_interest) {
     student_score <- calculate_student_score(student_grades)
     
-    all_degrees <- map_dfr(subjects_of_interest, ~{
-      tryCatch({
-        degree_tree(.x) %>%
-          mutate(search_subject = .x)
-      }, error = function(e) {
-        tibble()
-      })
-    })
-    
-    if (nrow(all_degrees) == 0) {
-      return(tibble(message = "No degrees found for the specified subjects"))
-    }
-    
-    matching_degrees <- all_degrees %>%
-      mutate(
-        requirement_score = map_dbl(A_level, ~calculate_requirement_score(.x)),
-        meets_requirements = student_score >= requirement_score,
-        grade_difference = student_score - requirement_score
-      ) %>%
-      filter(meets_requirements) %>%
-      arrange(desc(grade_difference), title) %>%
-      mutate(
-        match_quality = case_when(
-          grade_difference >= 2 ~ "Strong Match",
-          grade_difference >= 1 ~ "Good Match", 
-          grade_difference >= 0 ~ "Okay Match"
-        )
-      ) %>%
-      select(
-        title, degree_type, A_level, match_quality, grade_difference,
-        A_level_subjects, GCSE, URL, search_subject
-      )
-    
-    return(matching_degrees)
+    all_degrees <- ucl_data() %>%
+      filter(str_detect(title, regex(paste(subjects_of_interest, collapse = "|"), ignore_case = TRUE))
+             
+             if (nrow(all_degrees) == 0) {
+               return(tibble(message = "No degrees found for the specified subjects"))
+             }
+             
+             matching_degrees <- all_degrees %>%
+               mutate(
+                 requirement_score = map_dbl(a_level, ~calculate_requirement_score(.x)),
+                 meets_requirements = student_score >= requirement_score,
+                 grade_difference = student_score - requirement_score
+               ) %>%
+               filter(meets_requirements) %>%
+               arrange(desc(grade_difference), title) %>%
+               mutate(
+                 match_quality = case_when(
+                   grade_difference >= 2 ~ "Strong Match",
+                   grade_difference >= 1 ~ "Good Match", 
+                   grade_difference >= 0 ~ "Okay Match"
+                 ),
+                 url = paste0('<a href="', url, '" target="_blank">📋 View Details</a>'),
+                 a_level_subjects = str_trunc(a_level_subjects, 80)
+               ) %>%
+               select(
+                 title, degree_type, a_level, match_quality, grade_difference,
+                 a_level_subjects, gcse, url, 
+                 lower_quartile_salary, median_salary, upper_quartile_salary
+               )
+             
+             return(matching_degrees)
   }
   
   # Reactive values
@@ -266,18 +256,13 @@ server <- function(input, output, session) {
     }
     
     matches <- result$matches %>%
-      mutate(
-        URL = paste0('<a href="', URL, '" target="_blank">📋 View Details</a>'),
-        A_level_subjects = str_trunc(A_level_subjects, 80)
-      ) %>%
       select(
         `Degree Title` = title,
         `Type` = degree_type,
-        `Required` = A_level,
+        `A-Level Requirements` = a_level,
         `Match Quality` = match_quality,
-        `Subject Area` = search_subject,
-        `Subject Requirements` = A_level_subjects,
-        `Details` = URL
+        `Subject Requirements` = a_level_subjects,
+        `Details` = url
       )
     
     DT::datatable(
@@ -293,7 +278,7 @@ server <- function(input, output, session) {
           list(width = "150px", targets = 4:5)
         )
       ),
-      caption = "Degrees you can get into - sorted by how well you exceed requirements!"
+      caption = "UCL Degrees you can get into - sorted by how well you exceed requirements!"
     ) %>%
       DT::formatStyle(
         "Match Quality",
@@ -303,15 +288,44 @@ server <- function(input, output, session) {
         )
       )
   })
+  
+  # Salary plot output
+  output$salaryPlot <- renderPlotly({
+    result <- results()
+    
+    if (!is.null(result$error) || nrow(result$matches) == 0) {
+      return(NULL)
+    }
+    
+    # Prepare data for plotting
+    plot_data <- result$matches %>%
+      arrange(desc(median_salary)) %>%
+      head(20) %>%  # Limit to top 20 for better visualization
+      mutate(title = fct_reorder(title, median_salary))
+    
+    # Create plot
+    p <- plot_ly(plot_data) %>%
+      add_segments(
+        x = ~lower_quartile_salary, xend = ~upper_quartile_salary,
+        y = ~title, yend = ~title,
+        line = list(color = "gray", width = 4),
+        showlegend = FALSE
+      ) %>%
+      add_markers(
+        x = ~median_salary, y = ~title,
+        marker = list(color = "#1f77b4", size = 10),
+        name = "Median Salary"
+      ) %>%
+      layout(
+        title = "Salary Range for Matching Degrees",
+        xaxis = list(title = "Salary (£)"),
+        yaxis = list(title = ""),
+        margin = list(l = 150)  # Increase left margin for long degree names
+      )
+    
+    p
+  })
 }
 
-# Run the application locally
-# To run on your computer: shinyApp(ui = ui, server = server)
-
-# To make it accessible on your local network (so others can access it):
-# shinyApp(ui = ui, server = server, options = list(host = "0.0.0.0", port = 3838))
-
-# To run from GitHub (anyone can access with this command):
-# shiny::runGitHub("your-repo-name", "your-username", subdir = "app-folder")
-
+# Run the application
 shinyApp(ui = ui, server = server)
